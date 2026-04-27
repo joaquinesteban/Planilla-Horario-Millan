@@ -1,0 +1,101 @@
+---
+// src/layouts/Layout.astro
+const { title = 'Átomo – Planilla de Personal' } = Astro.props;
+---
+<!DOCTYPE html>
+<html lang="es" class="bg-bg0 text-tx1">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{title}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body class="min-h-screen font-sans antialiased">
+  <slot />
+</body>
+</html>
+
+<style is:global>
+  /* Scrollbar */
+  * { scrollbar-width: thin; scrollbar-color: #3a3a50 #111116; }
+  ::-webkit-scrollbar       { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: #111116; }
+  ::-webkit-scrollbar-thumb { background: #3a3a50; border-radius: 3px; }
+
+  /* Modal */
+  #modal-overlay {
+    @apply fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4
+           opacity-0 pointer-events-none transition-opacity duration-200;
+  }
+  #modal-overlay.open            { @apply opacity-100 pointer-events-auto; }
+  #modal-overlay .modal-box      { @apply translate-y-5 transition-transform duration-200; }
+  #modal-overlay.open .modal-box { @apply translate-y-0; }
+
+  /* Pills de horas */
+  .hs-pill   { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold; }
+  .hs-ok     { @apply bg-grn/10 text-grn; }
+  .hs-low    { @apply bg-amb/10 text-amb; }
+  .hs-over   { @apply bg-red/10 text-red; }
+  .pill-free { @apply inline-block px-2 py-0.5 rounded-full text-xs bg-blu/10 text-blu; }
+
+  /* Cards */
+  .card        { @apply bg-bg2 border border-border1 rounded-xl overflow-hidden; }
+  .card-header { @apply flex items-center justify-between px-4 py-3 border-b border-border1; }
+  .card-body   { @apply p-4; }
+  .card-icon   { @apply w-6 h-6 rounded-md flex items-center justify-center text-sm shrink-0; }
+  .card-title  { @apply text-sm font-semibold; }
+  .card-meta   { @apply text-xs text-tx3; }
+
+  /* Stat boxes (modal) */
+  .stat-box { @apply bg-bg3 border border-border1 rounded-lg p-3 text-center; }
+  .stat-val { @apply text-xl font-bold text-acc2; }
+  .stat-lbl { @apply text-[10px] text-tx3 uppercase tracking-wide mt-0.5; }
+
+  /* Inputs */
+  .inp      { @apply bg-bg3 border border-border1 rounded-md px-2 py-1.5 text-tx1 text-xs w-full
+                     focus:outline-none focus:border-acc focus:bg-acc/5 transition-colors placeholder-tx3; }
+  .inp-time { @apply w-[84px]; }
+  .inp-name { @apply font-medium; }
+
+  /* Botones de tabla */
+  .rm-btn  { @apply text-tx3 hover:text-red hover:bg-red/10 text-base px-1.5 py-0.5 rounded transition-colors; }
+  .add-btn { @apply w-full mt-2 py-2 rounded-lg border border-dashed border-border1 text-tx3 text-xs
+                    flex items-center justify-center gap-1.5
+                    hover:border-acc hover:text-acc2 hover:bg-acc/5 transition-colors; }
+
+  /* Badges */
+  .badge { @apply inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium; }
+  .dot   { @apply w-1.5 h-1.5 rounded-full shrink-0; }
+
+  /* Alertas */
+  .alerta     { @apply flex items-start gap-3 bg-bg3 border border-border1 rounded-lg p-3 border-l-4; }
+  .alerta-red { @apply border-l-red; }
+  .alerta-amb { @apply border-l-amb; }
+  .alerta-grn { @apply border-l-grn; }
+
+  /* Tabs */
+  .tab-btn        { @apply flex items-center h-11 px-4 text-[11px] font-medium uppercase tracking-wide
+                           text-tx3 border-b-2 border-transparent hover:text-tx2 transition-colors
+                           whitespace-nowrap relative top-px; }
+  .tab-btn.active { @apply text-acc2 border-b-acc; }
+
+  /* Day panels */
+  .day-panel        { display: none; }
+  .day-panel.active { display: block; animation: fadeIn .2s ease; }
+
+  /* Section divider */
+  .section-divider { @apply flex items-center gap-3 my-5 text-[11px] font-semibold uppercase tracking-widest text-tx3; }
+  .section-divider::after { content: ''; @apply flex-1 h-px bg-border1; }
+
+  /* Animaciones */
+  @keyframes fadeIn  { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes slideIn { from { transform: translateX(40px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+  /* Print */
+  @media print {
+    header, nav, .btn, .add-btn, .rm-btn, #modal-overlay { display: none !important; }
+    .day-panel { display: block !important; page-break-after: always; }
+  }
+</style>

@@ -1,0 +1,44 @@
+
+<header class="sticky top-0 z-20 flex items-center justify-between
+               bg-bg1 border-b border-border1 px-6 h-14">
+
+  <!-- Logo -->
+  <div class="flex items-center gap-3">
+    <div class="w-8 h-8 rounded-full bg-gradient-to-br from-acc to-pink
+                flex items-center justify-center text-white font-bold text-xs shrink-0">
+      Á
+    </div>
+    <div>
+      <div class="text-sm font-semibold tracking-wide">Átomo</div>
+      <div class="text-[9px] text-tx3 tracking-widest uppercase hidden sm:block">
+        Planilla semanal de personal
+      </div>
+    </div>
+  </div>
+
+  <!-- Controles -->
+  <div class="flex items-center gap-2 flex-wrap">
+    <span class="text-xs text-tx3 hidden sm:block">Semana del</span>
+    <input
+      type="date" id="weekStart"
+      class="bg-bg3 border border-border1 text-tx1 text-xs px-3 py-1.5 rounded-md
+             [&::-webkit-calendar-picker-indicator]:invert-[.6]"
+    />
+    <button id="btn-pdf"
+      class="px-3 py-1.5 rounded-md text-xs font-medium bg-bg3 text-tx2
+             border border-border1 hover:text-tx1 transition-colors">
+      🖨 PDF
+    </button>
+    <button id="btn-json"
+      class="px-3 py-1.5 rounded-md text-xs font-medium bg-bg3 text-tx2
+             border border-border1 hover:text-tx1 transition-colors">
+      💾 JSON
+    </button>
+    <button id="btn-wa"
+      class="px-3 py-1.5 rounded-md text-xs font-medium
+             bg-grn/10 text-grn border border-grn/25
+             hover:bg-grn/20 transition-colors">
+      📲 WhatsApp
+    </button>
+  </div>
+</header>

@@ -1,0 +1,460 @@
+---
+// src/pages/index.astro
+import Layout       from '../layouts/Layout.astro';
+import Header       from '../components/Header.astro';
+import TabsBar      from '../components/TabsBar.astro';
+import EmpleadoModal from '../components/EmpleadoModal.astro';
+
+---
+
+
+
+<Layout>
+  <Header />
+  <TabsBar />
+  <main id="main-content" class="px-6 py-5 max-w-[1200px] mx-auto"></main>
+  <EmpleadoModal />
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2"></div>
+</Layout>
+
+<script type="module">
+import { store, DIAS, TURNOS, MAX_CAJAS, SECTORES } from './scripts/store.js';
+import { getDayDate, calcHoras, formatHoras }       from './scripts/tiempo.js';
+import { claseHoras, emojiHoras }                   from './scripts/colores.js';
+import { horasSemanales, diasTrabajados, allEmpleados, statsEmpleados, generarAlertas } from '../scripts/estadisticas.js';
+import { initDragRow, initDropZone }                from './scripts/dragdrop.js';
+import { openEmpleadoModal, closeModal, showToast } from './scripts/ui.js';
+import { exportarPDF, exportarJSON, compartirWhatsApp } from './scripts/exportar.js';
+import { getSugerenciasIA }                         from './scripts/ia.js';
+
+// Exponer closeModal globalmente (lo llama el botón del modal)
+window.closeModal = closeModal;
+
+// ── Init semana ───────────────────────────────────────────────────────────────
+document.getElementById('weekStart').value = store.getWeekStart();
+document.getElementById('weekStart').addEventListener('change', e => {
+  store.setWeekStart(e.target.value);
+  renderAll();
+});
+
+// ── Botones header ────────────────────────────────────────────────────────────
+document.getElementById('btn-pdf').addEventListener('click', exportarPDF);
+document.getElementById('btn-json').addEventListener('click', () => { exportarJSON(); showToast('Archivo descargado', 'success'); });
+document.getElementById('btn-wa').addEventListener('click', compartirWhatsApp);
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+let activeTab = 0;
+
+function renderTabs() {
+  document.getElementById('tabs-bar').innerHTML =
+    DIAS.map((d, i) =>
+      `<button class="tab-btn ${i === activeTab ? 'active' : ''}" data-tab="${i}">${d}</button>`
+    ).join('') +
+    `<button class="tab-btn ${activeTab === 7 ? 'active' : ''}" data-tab="7">📊 Resumen</button>`;
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeTab = +btn.dataset.tab;
+      renderTabs();
+      document.querySelectorAll('.day-panel').forEach((p, j) =>
+        p.classList.toggle('active', j === activeTab)
+      );
+    });
+  });
+}
+
+// ── Render principal ──────────────────────────────────────────────────────────
+function renderAll() {
+  renderTabs();
+  const main = document.getElementById('main-content');
+  main.innerHTML = '';
+
+  // Paneles de días
+  DIAS.forEach((_, i) => {
+    const p = document.createElement('div');
+    p.className = `day-panel ${i === activeTab ? 'active' : ''}`;
+    p.id = `panel-${i}`;
+    p.innerHTML = buildDayHTML(i);
+    main.appendChild(p);
+    bindDayEvents(p, i);
+  });
+
+  // Panel resumen
+  const sp = document.createElement('div');
+  sp.className = `day-panel ${activeTab === 7 ? 'active' : ''}`;
+  sp.id = 'panel-7';
+  sp.innerHTML = buildResumenHTML();
+  main.appendChild(sp);
+  bindResumenEvents(sp);
+}
+
+// ── HTML de un día ────────────────────────────────────────────────────────────
+function buildDayHTML(i) {
+  const d   = store.getDay(i);
+  const act = d.empleados.filter(e => !e.libre && e.entrada).length;
+  const fr  = d.empleados.filter(e => e.libre).length;
+
+  // Filas empleados cajas
+  const rows = d.empleados.map((e, ei) => `
+    <tr draggable="true" data-di="${i}" data-ei="${ei}" class="border-b border-border1/30 last:border-0">
+      <td class="py-1 px-1"><input class="inp inp-name" value="${e.nombre}" placeholder="Nombre"
+            data-f="nombre" data-di="${i}" data-ei="${ei}"></td>
+      <td class="py-1 px-1"><input class="inp inp-time" type="time" value="${e.entrada}"
+            data-f="entrada" data-di="${i}" data-ei="${ei}"></td>
+      <td class="py-1 px-1"><input class="inp inp-time" type="time" value="${e.salida}"
+            data-f="salida" data-di="${i}" data-ei="${ei}"></td>
+      <td class="py-1 px-1 text-center">
+        <input type="checkbox" class="accent-acc w-3.5 h-3.5 cursor-pointer"
+               ${e.libre ? 'checked' : ''} data-f="libre" data-di="${i}" data-ei="${ei}">
+      </td>
+      <td class="py-1 px-1">
+        <button class="rm-btn" data-rdi="${i}" data-rei="${ei}">×</button>
+      </td>
+    </tr>`).join('');
+
+  // Grid de cajas por turno
+  const cajasHTML = TURNOS.map(t => `
+    <div class="flex items-center gap-2 my-3 text-[10px] uppercase tracking-widest text-tx3 font-medium">
+      <span>${t}</span><div class="flex-1 h-px bg-border1"></div>
+    </div>
+    <div class="grid grid-cols-3 gap-2">
+      ${Array(MAX_CAJAS).fill(0).map((_, ci) => `
+        <div class="bg-bg3 border border-border1 rounded-lg p-2 text-center focus-within:border-acc transition-colors">
+          <div class="text-[9px] text-tx3 uppercase tracking-wide mb-1">Caja</div>
+          <div class="text-lg font-bold text-acc2 leading-none">${ci + 1}</div>
+          <input class="mt-1.5 bg-bg4 border border-border1 rounded px-1 py-1 text-tx1 text-[11px] w-full text-center
+                         focus:outline-none focus:border-acc"
+                 value="${d.cajas[t][ci]}" placeholder="—"
+                 data-cdi="${i}" data-ct="${t}" data-cci="${ci}">
+        </div>`).join('')}
+    </div>`).join('');
+
+  // Cards de sectores
+  const sectoresHTML = SECTORES.map(s => {
+    const colorBorder = { pink: 'border-t-pink', cyn: 'border-t-cyn', red: 'border-t-red', lim: 'border-t-lim' };
+    const colorIcon   = { pink: 'bg-pink/10', cyn: 'bg-cyn/10', red: 'bg-red/10', lim: 'bg-lim/10' };
+    const emps = d.sectores?.[s.id]?.empleados ?? [];
+
+    const sRows = emps.map((e, ei) => `
+      <tr class="border-b border-border1/30 last:border-0">
+        <td class="py-1 px-1"><input class="inp inp-name" value="${e.nombre}" placeholder="Nombre"
+              data-sf="nombre" data-sdi="${i}" data-ssid="${s.id}" data-sei="${ei}"></td>
+        <td class="py-1 px-1"><input class="inp inp-time" type="time" value="${e.entrada}"
+              data-sf="entrada" data-sdi="${i}" data-ssid="${s.id}" data-sei="${ei}"></td>
+        <td class="py-1 px-1"><input class="inp inp-time" type="time" value="${e.salida}"
+              data-sf="salida" data-sdi="${i}" data-ssid="${s.id}" data-sei="${ei}"></td>
+        <td class="py-1 px-1 text-center">
+          <input type="checkbox" class="accent-acc w-3.5 h-3.5 cursor-pointer"
+                 ${e.libre ? 'checked' : ''} data-sf="libre" data-sdi="${i}" data-ssid="${s.id}" data-sei="${ei}">
+        </td>
+        <td class="py-1 px-1">
+          <button class="rm-btn" data-srdi="${i}" data-srsid="${s.id}" data-srei="${ei}">×</button>
+        </td>
+      </tr>`).join('');
+
+    return `
+      <div class="card border-t-2 ${colorBorder[s.color] ?? 'border-t-acc'}">
+        <div class="card-header">
+          <div class="flex items-center gap-2">
+            <div class="card-icon ${colorIcon[s.color] ?? 'bg-acc/10'}">${s.icon}</div>
+            <span class="card-title">${s.label}</span>
+          </div>
+          <span class="card-meta" id="smeta-${i}-${s.id}">${emps.length} empleados</span>
+        </div>
+        <div class="card-body" id="sbody-${i}-${s.id}">
+          <table class="w-full">
+            <thead><tr class="border-b border-border1">
+              <th class="text-left pb-2 text-[10px] uppercase tracking-wide text-tx3 font-medium">Nombre</th>
+              <th class="pb-2 text-[10px] uppercase tracking-wide text-tx3 font-medium">Entrada</th>
+              <th class="pb-2 text-[10px] uppercase tracking-wide text-tx3 font-medium">Salida</th>
+              <th class="pb-2 text-[10px] uppercase tracking-wide text-tx3 font-medium">Franco</th>
+              <th></th>
+            </tr></thead>
+            <tbody>${sRows}</tbody>
+          </table>
+          <button class="add-btn justify-center" data-sadd-di="${i}" data-sadd-sid="${s.id}">+ Agregar empleado</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  return `
+    <!-- Day header -->
+    <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
+      <div class="flex items-baseline gap-3 flex-wrap">
+        <div class="text-2xl font-semibold tracking-tight">${DIAS[i]}</div>
+        <div class="text-xs text-tx3">${getDayDate(store.getWeekStart(), i)}</div>
+      </div>
+      <div class="flex gap-2 flex-wrap">
+        <span class="badge bg-acc/10 text-acc2"><span class="dot bg-acc"></span>${act} cajeros</span>
+        <span class="badge bg-grn/10 text-grn"><span class="dot bg-grn"></span>${fr} francos</span>
+      </div>
+    </div>
+
+    <!-- Sección cajas -->
+    <div class="section-divider">Cajas</div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+      <div class="card border-t-2 border-t-acc">
+        <div class="card-header">
+          <div class="flex items-center gap-2">
+            <div class="card-icon bg-acc/10">🕐</div>
+            <span class="card-title">Horarios – Cajas</span>
+          </div>
+          <span class="card-meta">${d.empleados.length} empleados</span>
+        </div>
+        <div class="card-body">
+          <table class="w-full">
+            <thead><tr class="border-b border-border1">
+              <th class="text-left pb-2 text-[10px] uppercase tracking-wide text-tx3 font-medium">Nombre</th>
+              <th class="pb-2 text-[10px] uppercase tracking-wide text-tx3 font-medium">Entrada</th>
+              <th class="pb-2 text-[10px] uppercase tracking-wide text-tx3 font-medium">Salida</th>
+              <th class="pb-2 text-[10px] uppercase tracking-wide text-tx3 font-medium">Franco</th>
+              <th></th>
+            </tr></thead>
+            <tbody data-ddi="${i}">${rows}</tbody>
+          </table>
+          <button class="add-btn justify-center" data-adi="${i}">+ Agregar empleado</button>
+        </div>
+      </div>
+      <div class="card border-t-2 border-t-amb">
+        <div class="card-header">
+          <div class="flex items-center gap-2">
+            <div class="card-icon bg-amb/10">🧾</div>
+            <span class="card-title">Cajeros por turno</span>
+          </div>
+          <span class="card-meta">${MAX_CAJAS} cajas</span>
+        </div>
+        <div class="card-body">${cajasHTML}</div>
+      </div>
+    </div>
+
+    <!-- Sección otros sectores -->
+    <div class="section-divider">Otros sectores</div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">${sectoresHTML}</div>`;
+}
+
+// ── Bind eventos de un día ────────────────────────────────────────────────────
+function bindDayEvents(panel, i) {
+  // Empleados cajas
+  panel.querySelectorAll('[data-f]').forEach(el => {
+    const ev = el.type === 'checkbox' ? 'change' : 'input';
+    el.addEventListener(ev, () => {
+      store.setEmpleado(+el.dataset.di, +el.dataset.ei, el.dataset.f, el.type === 'checkbox' ? el.checked : el.value);
+      refreshBadges(i);
+    });
+  });
+  panel.querySelectorAll('[data-cdi]').forEach(el =>
+    el.addEventListener('input', () => store.setCaja(+el.dataset.cdi, el.dataset.ct, +el.dataset.cci, el.value))
+  );
+  panel.querySelectorAll('[data-adi]').forEach(btn =>
+    btn.addEventListener('click', () => { store.addEmpleado(+btn.dataset.adi); reloadDay(i); showToast('Empleado agregado', 'success'); })
+  );
+  panel.querySelectorAll('[data-rdi]').forEach(btn =>
+    btn.addEventListener('click', () => { store.removeEmpleado(+btn.dataset.rdi, +btn.dataset.rei); reloadDay(i); })
+  );
+
+  // Sectores
+  panel.querySelectorAll('[data-sf]').forEach(el => {
+    const ev = el.type === 'checkbox' ? 'change' : 'input';
+    el.addEventListener(ev, () =>
+      store.setSectorEmpleado(+el.dataset.sdi, el.dataset.ssid, +el.dataset.sei, el.dataset.sf, el.type === 'checkbox' ? el.checked : el.value)
+    );
+  });
+  panel.querySelectorAll('[data-sadd-di]').forEach(btn =>
+    btn.addEventListener('click', () => { store.addSectorEmpleado(+btn.dataset.saddDi, btn.dataset.saddSid); reloadDay(i); showToast('Empleado agregado', 'success'); })
+  );
+  panel.querySelectorAll('[data-srdi]').forEach(btn =>
+    btn.addEventListener('click', () => { store.removeSectorEmpleado(+btn.dataset.srdi, btn.dataset.srsid, +btn.dataset.srei); reloadDay(i); })
+  );
+
+  // Drag & Drop
+  panel.querySelectorAll('tr[data-di]').forEach(tr => initDragRow(tr, +tr.dataset.di, +tr.dataset.ei));
+  panel.querySelectorAll('[data-ddi]').forEach(tbody => initDropZone(tbody, +tbody.dataset.ddi));
+}
+
+function reloadDay(i) {
+  const p = document.getElementById(`panel-${i}`);
+  if (p) { p.innerHTML = buildDayHTML(i); bindDayEvents(p, i); }
+}
+
+function refreshBadges(i) {
+  const d = store.getDay(i), p = document.getElementById(`panel-${i}`);
+  if (!p) return;
+  const badges = p.querySelectorAll('.badge');
+  if (badges[0]) badges[0].innerHTML = `<span class="dot bg-acc"></span>${d.empleados.filter(e => !e.libre && e.entrada).length} cajeros`;
+  if (badges[1]) badges[1].innerHTML = `<span class="dot bg-grn"></span>${d.empleados.filter(e => e.libre).length} francos`;
+}
+
+// ── HTML Resumen ──────────────────────────────────────────────────────────────
+function buildResumenHTML() {
+  const state   = store.getAll();
+  const alertas = generarAlertas();
+
+  const kpis = `
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+      <div class="card p-4"><div class="text-2xl font-bold text-acc2">${DIAS.reduce((a,_,i) => a + state[i].empleados.filter(e=>!e.libre&&e.nombre).length, 0)}</div><div class="text-xs text-tx3 mt-1">Turnos asignados (cajas)</div></div>
+      <div class="card p-4"><div class="text-2xl font-bold text-acc2">${DIAS.reduce((a,_,i) => a + state[i].empleados.filter(e=>e.libre).length, 0)}</div><div class="text-xs text-tx3 mt-1">Francos totales</div></div>
+      <div class="card p-4"><div class="text-2xl font-bold text-acc2">${allEmpleados(null).length}</div><div class="text-xs text-tx3 mt-1">Cajeros activos</div></div>
+      <div class="card p-4"><div class="text-2xl font-bold text-acc2">${SECTORES.reduce((_,s) => _ + allEmpleados(s.id).length, 0)}</div><div class="text-xs text-tx3 mt-1">Empleados otros sectores</div></div>
+    </div>`;
+
+  const dayCards = `
+    <div class="grid grid-cols-4 sm:grid-cols-7 gap-2 mb-5">
+      ${DIAS.map((d, i) => {
+        const act = state[i].empleados.filter(e => !e.libre && e.nombre).length;
+        const fr  = state[i].empleados.filter(e => e.libre).length;
+        return `<div class="card border-t-2 border-t-border1 hover:border-t-acc p-3 cursor-pointer transition-colors" data-go="${i}">
+          <div class="text-[10px] font-semibold uppercase tracking-wide text-tx3 mb-2">${d.slice(0,3)}</div>
+          <div class="text-2xl font-bold text-acc2 leading-none">${act}</div>
+          <div class="text-[10px] text-tx3 mt-1">cajeros</div>
+          ${fr ? `<span class="inline-block mt-2 px-1.5 py-0.5 rounded-full text-[10px] bg-blu/10 text-blu">${fr} francos</span>` : ''}
+        </div>`;
+      }).join('')}
+    </div>`;
+
+  const alertaHTML = alertas.map(a =>
+    `<div class="alerta alerta-${a.tipo}">
+      <div class="text-sm shrink-0 mt-0.5">${a.icon}</div>
+      <div class="text-xs text-tx2 leading-relaxed"><div class="font-semibold text-tx1 mb-0.5">${a.ttl}</div>${a.msg}</div>
+    </div>`
+  ).join('');
+
+  // Tabla por sector
+  function buildSectorTable(sid, sLabel, sIcon, color) {
+    const nombres = allEmpleados(sid === 'cajas' ? null : sid);
+    if (!nombres.length) return '';
+    const colorMap = { acc: 'bg-acc/10 text-acc2', pink: 'bg-pink/10 text-pink', cyn: 'bg-cyn/10 text-cyn', red: 'bg-red/10 text-red', lim: 'bg-lim/10 text-lim' };
+    const cls = colorMap[color] ?? colorMap.acc;
+
+    const rows = nombres.map(nombre => {
+      const hs   = horasSemanales(nombre, sid === 'cajas' ? null : sid);
+      const dias = diasTrabajados(nombre, sid === 'cajas' ? null : sid);
+      const hsCls = claseHoras(hs);
+      const cols = DIAS.map((_, di) => {
+        const emps = sid === 'cajas' ? state[di].empleados : state[di].sectores?.[sid]?.empleados ?? [];
+        const emp  = emps.find(e => e.nombre === nombre);
+        if (!emp)         return `<td class="text-center text-tx3 text-xs py-2">—</td>`;
+        if (emp.libre)    return `<td class="text-center py-2"><span class="pill-free">🔵</span></td>`;
+        if (!emp.entrada) return `<td class="text-center text-tx3 text-xs py-2">—</td>`;
+        return `<td class="text-center text-tx2 text-xs py-2 whitespace-nowrap">${emp.entrada}–${emp.salida}</td>`;
+      }).join('');
+      const totalCell = hs > 0
+        ? `<td class="text-center py-2"><span class="hs-pill ${hsCls}">${emojiHoras(hs)} ${formatHoras(hs)}</span></td>`
+        : `<td class="text-center text-tx3 text-xs py-2">—</td>`;
+      return `<tr class="border-b border-border1/30 last:border-0 hover:bg-bg3/50 transition-colors" data-open="${nombre}" data-open-sid="${sid === 'cajas' ? '' : sid}">
+        <td class="py-2 pr-2 font-medium text-xs cursor-pointer hover:text-acc2 transition-colors">${nombre}</td>
+        ${cols}${totalCell}
+        <td class="text-center text-tx3 text-[11px] py-2">${dias}d · ${formatHoras(dias ? hs/dias : 0)}</td>
+      </tr>`;
+    }).join('');
+
+    return `
+      <div class="flex items-center gap-2 mt-5 mb-3 pb-2 border-b border-border1">
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${cls}">
+          ${sIcon} ${sLabel}
+        </span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full min-w-[600px]">
+          <thead><tr class="border-b border-border1">
+            <th class="text-left pb-2 text-[10px] uppercase tracking-wide text-tx3 font-medium">Empleado</th>
+            ${DIAS.map(d => `<th class="text-center pb-2 text-[10px] uppercase tracking-wide text-tx3 font-medium">${d.slice(0,3)}</th>`).join('')}
+            <th class="text-center pb-2 text-[10px] uppercase tracking-wide text-tx3 font-medium">Total hs</th>
+            <th class="text-center pb-2 text-[10px] uppercase tracking-wide text-tx3 font-medium">Días · Prom</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  const tablas =
+    buildSectorTable('cajas', 'Cajas', '🕐', 'acc') +
+    SECTORES.map(s => buildSectorTable(s.id, s.label, s.icon, s.color)).join('');
+
+  return `
+    <div class="flex items-baseline gap-3 mb-5 flex-wrap">
+      <div class="text-2xl font-semibold tracking-tight">Resumen semanal</div>
+    </div>
+    ${kpis}
+    ${dayCards}
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+      <div class="card">
+        <div class="card-header">
+          <div class="flex items-center gap-2"><div class="card-icon bg-red/10">⚠️</div><span class="card-title">Alertas automáticas</span></div>
+          <span class="card-meta">${alertas.length} alertas</span>
+        </div>
+        <div class="card-body"><div class="flex flex-col gap-2">${alertaHTML}</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="flex items-center gap-2"><div class="card-icon bg-acc/10">🤖</div><span class="card-title">Sugerencias IA</span></div>
+          <button id="btn-ia" class="px-3 py-1 rounded-md text-xs font-medium bg-acc text-white hover:bg-acc2 transition-colors">Analizar</button>
+        </div>
+        <div class="card-body">
+          <div id="ia-result" class="text-xs text-tx3 leading-relaxed">
+            Hacé clic en <strong class="text-tx2">Analizar</strong> para obtener sugerencias de optimización con IA.
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="flex items-center gap-2"><div class="card-icon bg-acc/10">📋</div><span class="card-title">Horario semanal por empleado</span></div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="hs-pill hs-low text-[10px]">🟡 &lt;40hs</span>
+          <span class="hs-pill hs-ok  text-[10px]">🟢 =40hs</span>
+          <span class="hs-pill hs-over text-[10px]">🔴 &gt;40hs</span>
+        </div>
+      </div>
+      <div class="card-body">${tablas}</div>
+    </div>`;
+}
+
+function bindResumenEvents(panel) {
+  // Ir a tab de día
+  panel.querySelectorAll('[data-go]').forEach(el =>
+    el.addEventListener('click', () => {
+      activeTab = +el.dataset.go;
+      renderTabs();
+      document.querySelectorAll('.day-panel').forEach((p, j) => p.classList.toggle('active', j === activeTab));
+    })
+  );
+
+  // Abrir modal empleado
+  panel.querySelectorAll('[data-open]').forEach(el =>
+    el.addEventListener('click', () => openEmpleadoModal(el.dataset.open, el.dataset.openSid || null))
+  );
+
+  // IA
+  const btnIA = panel.querySelector('#btn-ia');
+  if (btnIA) {
+    btnIA.addEventListener('click', async () => {
+      const key = prompt('Ingresá tu API Key de Anthropic (no se guarda):');
+      if (!key) return;
+      const result = document.getElementById('ia-result');
+      result.innerHTML = `<div class="flex items-center gap-2 text-tx3">
+        <div class="w-1.5 h-1.5 rounded-full bg-acc animate-pulse"></div>
+        <div class="w-1.5 h-1.5 rounded-full bg-acc animate-pulse [animation-delay:.2s]"></div>
+        <div class="w-1.5 h-1.5 rounded-full bg-acc animate-pulse [animation-delay:.4s]"></div>
+        <span>Analizando planilla…</span>
+      </div>`;
+      try {
+        const data = await getSugerenciasIA(key);
+        const colors = { critica: 'alerta-red', atencion: 'alerta-amb', positiva: 'alerta-grn' };
+        result.innerHTML = `
+          <p class="text-xs text-tx2 mb-3"><strong>Resumen:</strong> ${data.resumen_ejecutivo || '—'}</p>
+          <div class="flex flex-col gap-2">
+            ${(data.sugerencias || []).map(s => `
+              <div class="alerta ${colors[s.tipo] || 'alerta-amb'}">
+                <div class="text-xs text-tx2 leading-relaxed"><div class="font-semibold text-tx1 mb-0.5">${s.titulo}</div>${s.detalle}</div>
+              </div>`).join('')}
+          </div>`;
+      } catch (err) {
+        result.innerHTML = `<span class="text-red text-xs">Error: ${err.message}</span>`;
+      }
+    });
+  }
+}
+
+// ── Arrancar ──────────────────────────────────────────────────────────────────
+renderAll();
+</script>

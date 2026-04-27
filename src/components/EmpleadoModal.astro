@@ -1,0 +1,47 @@
+-
+<div id="modal-overlay">
+  <div class="modal-box bg-bg2 border border-border2 rounded-2xl
+              w-full max-w-lg max-h-[88vh] overflow-y-auto">
+
+    <!-- Header -->
+    <div class="sticky top-0 z-10 bg-bg2 flex items-center justify-between
+                px-5 pt-4 pb-3 border-b border-border1">
+      <div>
+        <div id="m-name" class="text-base font-semibold"></div>
+        <div id="m-sub"  class="text-[11px] text-tx3 mt-0.5"></div>
+      </div>
+      <button onclick="closeModal()"
+              class="text-tx3 hover:text-red text-lg px-2 py-0.5 rounded transition-colors">
+        ×
+      </button>
+    </div>
+
+    <!-- Body -->
+    <div class="p-5">
+
+      <!-- Stats -->
+      <div class="grid grid-cols-3 gap-2 mb-3">
+        <div class="stat-box"><div id="m-hs"   class="stat-val">—</div><div class="stat-lbl">Horas totales</div></div>
+        <div class="stat-box"><div id="m-dias" class="stat-val">—</div><div class="stat-lbl">Días trabajados</div></div>
+        <div class="stat-box"><div id="m-prom" class="stat-val">—</div><div class="stat-lbl">Prom / día</div></div>
+      </div>
+
+      <!-- Pill estado -->
+      <div id="m-pill" class="text-center mb-4"></div>
+
+      <!-- Tabla por día -->
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-border1">
+            <th class="text-left pb-2 text-[10px] uppercase tracking-wide text-tx3 font-medium">Día</th>
+            <th class="pb-2 text-[10px] uppercase tracking-wide text-tx3 font-medium">Entrada</th>
+            <th class="pb-2 text-[10px] uppercase tracking-wide text-tx3 font-medium">Salida</th>
+            <th class="pb-2 text-[10px] uppercase tracking-wide text-tx3 font-medium">Horas</th>
+          </tr>
+        </thead>
+        <tbody id="m-tbody"></tbody>
+      </table>
+
+    </div>
+  </div>
+</div>
